@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Silentium OSINT | Core</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
         :root {
             --neon-green: #0f0;
@@ -15,178 +19,135 @@
             background-color: var(--dark-bg);
             color: var(--neon-green);
             font-family: 'Courier New', Courier, monospace;
-            margin: 0;
-            display: flex;
-            height: 100vh;
-            overflow: hidden;
+            margin: 0; display: flex; height: 100vh; overflow: hidden;
         }
-        /* Panel Kiri - Log & Code */
+        /* Panel Kiri */
         .code-panel {
-            flex: 1;
-            border-right: 1px solid rgba(0, 255, 0, 0.2);
-            padding: 20px;
-            overflow-y: auto;
-            background: rgba(0, 0, 0, 0.6);
+            flex: 1; border-right: 1px solid rgba(0, 255, 0, 0.2);
+            padding: 20px; overflow-y: auto; background: rgba(0, 0, 0, 0.6);
         }
-        .keyword { color: #ff7b72; }
-        .string { color: #a5d6ff; }
+        .keyword { color: #ff7b72; } .string { color: #a5d6ff; }
         .comment { color: var(--code-gray); font-style: italic; }
-        .function { color: #d2a8ff; }
-
-        /* Panel Kanan - Visual HUD */
+        
+        /* Panel Kanan & HUD */
         .visual-panel {
-            flex: 1.5;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            position: relative;
+            flex: 1.5; padding: 20px; display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
         }
         .hud-box {
-            border: 1px solid var(--neon-green);
-            padding: 30px;
-            width: 85%;
-            height: 60%;
-            position: relative;
+            border: 1px solid var(--neon-green); width: 90%; height: 65%;
             background: radial-gradient(circle, rgba(0,255,0,0.05) 0%, rgba(0,0,0,0.8) 100%);
-            box-shadow: inset 0 0 20px rgba(0, 255, 0, 0.1);
-            display: flex;
-            flex-direction: row;
-            gap: 20px;
+            box-shadow: inset 0 0 20px rgba(0, 255, 0, 0.1); display: flex; flex-direction: column;
         }
         
-        /* Face / Image Area */
-        .image-target-area {
-            flex: 1;
-            border: 1px dashed var(--neon-green);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .face-scanner {
-            position: absolute;
-            width: 100%;
-            height: 5px;
-            background: rgba(0, 255, 0, 0.8);
-            box-shadow: 0 0 15px var(--neon-green);
-            animation: faceScan 3s ease-in-out infinite alternate;
-            display: none;
-        }
-        
-        @keyframes faceScan {
-            0% { top: 0; }
-            100% { top: 100%; }
+        /* Upper HUD (Data Text) */
+        .hud-data-area {
+            padding: 15px; border-bottom: 1px dashed var(--neon-green);
+            min-height: 100px;
         }
 
-        /* Info Data Area */
-        .data-area {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
+        /* Lower HUD (Visuals) */
+        .hud-visual-area {
+            display: flex; flex: 1; overflow: hidden;
         }
+        
+        /* Map Container */
+        #osint-map { flex: 1; border-right: 1px dashed var(--neon-green); z-index: 1;}
+        /* Cyberpunk Dark Mode Filter for Map */
+        .map-tiles { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+        
+        /* Chart Container */
+        .chart-container { flex: 1; padding: 10px; display: flex; justify-content: center; align-items: center;}
 
-        /* Control Panel */
-        .controls {
-            margin-top: 20px;
-            width: 85%;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
+        /* Controls */
+        .controls { margin-top: 15px; width: 90%; display: flex; flex-wrap: wrap; gap: 10px; }
         select, input, button {
-            background: transparent;
-            border: 1px solid var(--neon-green);
-            color: var(--neon-green);
-            padding: 10px;
-            font-family: inherit;
+            background: transparent; border: 1px solid var(--neon-green);
+            color: var(--neon-green); padding: 10px; font-family: inherit;
         }
-        select { flex: 1; cursor: pointer; }
-        input { flex: 2; min-width: 200px; }
-        button { flex: 1; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        select { flex: 1; } input { flex: 2; min-width: 150px;}
+        button { flex: 1; cursor: pointer; font-weight: bold; }
         button:hover { background: var(--neon-green); color: var(--dark-bg); }
-        
-        /* Tampilan responsif untuk HP */
+
         @media (max-width: 768px) {
             body { flex-direction: column; }
             .code-panel, .visual-panel { flex: none; height: 50vh; }
-            .hud-box { flex-direction: column; height: auto; }
-            .image-target-area { height: 150px; }
+            .hud-visual-area { flex-direction: column; }
+            #osint-map, .chart-container { min-height: 150px; border-right: none; border-bottom: 1px dashed var(--neon-green); }
         }
     </style>
 </head>
 <body>
 
     <div class="code-panel" id="log-panel">
-        <div><span class="comment">/// &lt;summary&gt;</span></div>
-        <div><span class="comment">/// SILENTIUM HYBRID ENGINE V2.0</span></div>
-        <div><span class="comment">/// Status: Online & Ready</span></div>
-        <div><span class="comment">/// &lt;/summary&gt;</span></div>
+        <div><span class="comment">/// SILENTIUM HYBRID ENGINE V3.0</span></div>
+        <div><span class="comment">/// Init Maps & Radar Core... OK</span></div>
         <br>
-        <div><span class="keyword">public class</span> <span class="function">TARGET_DATA</span></div>
-        <div>{</div>
-        <div style="margin-left: 20px;">
-            <span class="keyword">public string</span> STATUS = <span class="string" id="code-status">"AWAITING_INPUT"</span>; <br>
-            <span class="keyword">public string</span> TARGET_ID = <span class="string" id="code-target">"null"</span>; <br>
-        </div>
-        <div>}</div>
-        <br>
-        <div><span class="comment">// Connection logs will appear below...</span></div>
         <div id="terminal-log"></div>
     </div>
 
     <div class="visual-panel">
         <div class="hud-box">
-            <div class="image-target-area" id="image-area">
-                <span style="opacity: 0.5;">[ NO TARGET IMAGE ]</span>
-                <div class="face-scanner" id="scanner-line"></div>
+            <div class="hud-data-area">
+                <span style="font-weight: bold;">TARGET: </span><span id="out-query" style="color: #fff;">Standby</span> | 
+                <span style="font-weight: bold;">STATUS: </span><span id="out-status" style="color: gray;">Idle</span>
+                <div style="margin-top: 10px; color: #fff; font-size: 0.85em;" id="out-nodes">Waiting for command...</div>
             </div>
             
-            <div class="data-area" id="hud-data">
-                <h3 style="margin-top: 0; border-bottom: 1px solid var(--neon-green);">TARGET INTEL</h3>
-                <p>Query: <span id="out-query" style="color: #fff;">Standby</span></p>
-                <p>Status: <span id="out-status" style="color: gray;">Idle</span></p>
-                <div style="margin-top: 10px; border: 1px solid #333; padding: 10px; height: 100%; overflow-y: auto;">
-                    <span id="out-nodes" style="color: #fff; font-size: 0.8em;">Waiting for command...</span>
+            <div class="hud-visual-area">
+                <div id="osint-map"></div>
+                <div class="chart-container">
+                    <canvas id="radarChart"></canvas>
                 </div>
             </div>
         </div>
         
         <div class="controls">
             <select id="serverMode" style="border-color: #ffcc00; color: #ffcc00;">
-                <option value="http://127.0.0.1:5000">TACTICAL (Local/Termux)</option>
+                <option value="http://127.0.0.1:5000">LOKAL (Termux/Kali)</option>
                 <option value="https://silentium-backend.onrender.com">CLOUD (Render API)</option>
             </select>
-
-            <select id="searchType" onchange="toggleInputType()">
-                <option value="username">Username</option>
+            <select id="searchType">
                 <option value="ip">IP Address</option>
-                <option value="face">Face/Image</option>
+                <option value="email">Email Address</option>
+                <option value="username">Username</option>
             </select>
-            
             <input type="text" id="targetInput" placeholder="Masukkan target query...">
             <button onclick="executeOSINT()">EXECUTE</button>
         </div>
     </div>
 
     <script>
-        function toggleInputType() {
-            const type = document.getElementById('searchType').value;
-            const textInput = document.getElementById('targetInput');
-            
-            if(type === 'ip') textInput.placeholder = "Contoh: 8.8.8.8";
-            else if(type === 'username') textInput.placeholder = "Masukkan username...";
-            else textInput.placeholder = "Upload belum didukung di versi free API...";
-        }
+        // Init Peta Intelijen (Leaflet)
+        let map = L.map('osint-map', {zoomControl: false}).setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            className: 'map-tiles' // Mengaktifkan efek gelap cyberpunk
+        }).addTo(map);
+        let marker;
 
-        function appendLog(msg, isKeyword = false) {
+        // Init Grafik Radar (Chart.js)
+        let ctx = document.getElementById('radarChart').getContext('2d');
+        let osintChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['Threat', 'Activity', 'Network', 'Footprint', 'Anonymity'],
+                datasets: [{
+                    label: 'Target Signature',
+                    data: [0, 0, 0, 0, 0],
+                    backgroundColor: 'rgba(0, 255, 0, 0.2)',
+                    borderColor: '#0f0',
+                    pointBackgroundColor: '#0f0'
+                }]
+            },
+            options: {
+                scales: { r: { grid: { color: '#222' }, angleLines: { color: '#222' }, pointLabels: { color: '#0f0', font: {size: 10} }, ticks: {display: false} } },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        function appendLog(msg) {
             const panel = document.getElementById('terminal-log');
-            const spanClass = isKeyword ? 'keyword' : 'string';
-            panel.innerHTML += `<br><span class="${spanClass}">> ${msg}</span>`;
+            panel.innerHTML += `<br><span class="string">> ${msg}</span>`;
             const logContainer = document.getElementById('log-panel');
             logContainer.scrollTop = logContainer.scrollHeight;
         }
@@ -196,20 +157,12 @@
             const target = document.getElementById('targetInput').value;
             const serverBaseUrl = document.getElementById('serverMode').value; 
             
-            if(!target && type !== 'face') return;
+            if(!target) return;
 
-            // Update UI Status
-            document.getElementById('out-query').innerText = target || 'IMAGE_DATA';
-            document.getElementById('code-target').innerText = `"${target || 'IMAGE'}"`;
-            document.getElementById('code-status').innerText = `"ANALYZING"`;
-            document.getElementById('out-status').innerHTML = `<span style="color: yellow;">ANALYZING via ${serverBaseUrl.includes('127.0') ? 'LOCAL' : 'CLOUD'}...</span>`;
-            document.getElementById('out-nodes').innerText = "Connecting to Backend Server...";
-            
-            appendLog(`Initialize scan sequence for: ${target} via ${serverBaseUrl}...`);
-
-            if(type === 'face') {
-                document.getElementById('scanner-line').style.display = 'block';
-            }
+            document.getElementById('out-query').innerText = target;
+            document.getElementById('out-status').innerHTML = `<span style="color: yellow;">ANALYZING...</span>`;
+            document.getElementById('out-nodes').innerText = "Establishing secure connection...";
+            appendLog(`Initiating ${type} sweep for ${target} via ${serverBaseUrl.includes('127.0') ? 'LOCAL' : 'CLOUD'}...`);
 
             try {
                 const response = await fetch(`${serverBaseUrl}/api/osint`, {
@@ -222,19 +175,27 @@
 
                 if(data.status === 'success') {
                     document.getElementById('out-status').innerHTML = `<span style="color: red;">TARGET LOCKED</span>`;
-                    document.getElementById('code-status').innerText = `"LOCKED"`;
                     document.getElementById('out-nodes').innerHTML = data.results.replace(/\n/g, '<br>');
-                    appendLog(`Signal locked. Data retrieved successfully.`, true);
+                    appendLog(`Data packets received successfully.`);
+
+                    // Menggerakkan Peta jika ada kordinat
+                    if(data.lat && data.lon) {
+                        map.setView([data.lat, data.lon], 13);
+                        if(marker) map.removeLayer(marker);
+                        marker = L.marker([data.lat, data.lon]).addTo(map);
+                        appendLog(`Geo-location updated on radar.`);
+                    }
+
+                    // Memperbarui Grafik Radar
+                    if(data.chart_data) {
+                        osintChart.data.datasets[0].data = data.chart_data;
+                        osintChart.update();
+                    }
                 }
             } catch (error) {
                 document.getElementById('out-status').innerHTML = `<span style="color: gray;">CONNECTION FAILED</span>`;
-                document.getElementById('code-status').innerText = `"ERROR"`;
-                document.getElementById('out-nodes').innerHTML = `Gagal terhubung ke Engine.<br>Pastikan server Python berjalan di ${serverBaseUrl}`;
-                appendLog(`[ERROR] Connection refused by target server.`, true);
-            }
-
-            if(type === 'face') {
-                setTimeout(() => { document.getElementById('scanner-line').style.display = 'none'; }, 2000);
+                document.getElementById('out-nodes').innerHTML = `Gagal terhubung.<br>Pastikan server backend berjalan di ${serverBaseUrl}`;
+                appendLog(`[ERROR] Connection refused. Server offline.`);
             }
         }
     </script>
